@@ -25,7 +25,8 @@
   const $ = (id) => document.getElementById(id);
   const ui = {
     num: $('level-num'), name: $('level-name'), moves: $('moves'), hint: $('hint'),
-    toast: $('toast'), clear: $('clear'), clearMoves: $('clear-moves'),
+    toast: $('toast'), clear: $('clear'), clearMoves: $('clear-moves'), clearNote: $('clear-note'),
+    best: $('best'), select: $('select'), selectGrid: $('select-grid'), selectSum: $('select-sum'),
   };
 
   // ---------- 状態 ----------
@@ -42,13 +43,40 @@
   let won = false;
   let time = 0;
   let view = { scale: 1, ox: 0, oy: 0 };
-  let cleared = loadProgress();
+  // ---------- 記録（ブラウザの localStorage に保存） ----------
+  // { [ステージ名]: { best: ベスト手数 } } … ステージ名をキーにするので、並べ替えても記録はずれない
+  const records = loadRecords();
 
-  function loadProgress() {
-    try { return JSON.parse(localStorage.getItem('kagewatari.cleared') || '[]'); } catch { return []; }
+  function loadRecords() {
+    let r = {};
+    try { r = JSON.parse(localStorage.getItem('kagewatari.records') || '{}') || {}; } catch { /* 読めなければ空 */ }
+    // 旧形式（クリア済みステージ番号の配列）からの引き継ぎ
+    try {
+      const old = JSON.parse(localStorage.getItem('kagewatari.cleared') || '[]');
+      for (const i of old) if (LEVELS[i] && !r[LEVELS[i].name]) r[LEVELS[i].name] = { best: null };
+    } catch { /* noop */ }
+    return r;
   }
-  function saveProgress() {
-    try { localStorage.setItem('kagewatari.cleared', JSON.stringify(cleared)); } catch { /* 保存不可でも続行 */ }
+  function saveRecords() {
+    try { localStorage.setItem('kagewatari.records', JSON.stringify(records)); } catch { /* 保存不可でも続行 */ }
+  }
+  const recordOf = (i) => records[LEVELS[i].name];
+
+  // 最短手数（ソルバーで計算してキャッシュ）
+  const parCache = {};
+  function par(i) {
+    const def = LEVELS[i];
+    if (!(def.name in parCache)) {
+      const p = L.parse(def);
+      const sol = L.solve(p.level, p.state);
+      parCache[def.name] = sol ? sol.path.length : null;
+    }
+    return parCache[def.name];
+  }
+  function mark(i) {
+    const r = recordOf(i);
+    if (!r) return '';
+    return r.best != null && r.best === par(i) ? '★' : '✓';
   }
 
   function loadLevel(i) {
@@ -61,17 +89,45 @@
     sunAngle = sunAngleTarget = state.sun * 90;
     sunTween = null;
     ui.num.textContent = `${levelIndex + 1} / ${LEVELS.length}`;
-    ui.name.textContent = level.name + (cleared.includes(levelIndex) ? ' ✓' : '');
+    ui.name.textContent = level.name + (mark(levelIndex) ? ' ' + mark(levelIndex) : '');
+    updateBest();
     ui.hint.textContent = level.hint;
     ui.hint.hidden = !level.hint;
     ui.clear.hidden = true;
     $('btn-ccw').disabled = $('btn-cw').disabled = level.lockSun;
     updateMoves();
     layout();
-    try { localStorage.setItem('kagewatari.last', String(levelIndex)); } catch { /* noop */ }
+    try { localStorage.setItem('kagewatari.lastName', level.name); } catch { /* noop */ }
   }
 
   function updateMoves() { ui.moves.textContent = `${history.length} 手`; }
+  function updateBest() {
+    const r = recordOf(levelIndex);
+    const best = r && r.best != null ? `ベスト ${r.best} 手` : 'ベスト —';
+    ui.best.textContent = `${best} ／ 最短 ${par(levelIndex)} 手`;
+  }
+
+  // ---------- ステージ選択 ----------
+  function openSelect() {
+    ui.selectGrid.textContent = '';
+    let cleared = 0, stars = 0;
+    LEVELS.forEach((def, i) => {
+      const r = recordOf(i), m = mark(i);
+      if (r) cleared++;
+      if (m === '★') stars++;
+      const b = document.createElement('button');
+      b.className = 'stage' + (i === levelIndex ? ' current' : '') + (r ? ' done' : '');
+      b.innerHTML = `<span class="no"></span><span class="nm"></span><span class="bt"></span>`;
+      b.querySelector('.no').textContent = `${i + 1}${m ? ' ' + m : ''}`;
+      b.querySelector('.nm').textContent = def.name;
+      b.querySelector('.bt').textContent = r && r.best != null ? `${r.best} / ${par(i)} 手` : r ? 'クリア' : '';
+      b.onclick = () => { closeSelect(); loadLevel(i); };
+      ui.selectGrid.appendChild(b);
+    });
+    ui.selectSum.textContent = `クリア ${cleared} / ${LEVELS.length}　★ ${stars}`;
+    ui.select.hidden = false;
+  }
+  function closeSelect() { ui.select.hidden = true; }
 
   // ---------- 操作 ----------
   function act(action) {
@@ -100,9 +156,18 @@
     updateMoves();
     if (L.isWin(level, state)) {
       won = true;
-      if (!cleared.includes(levelIndex)) { cleared.push(levelIndex); saveProgress(); }
+      const n = history.length, p = par(levelIndex);
+      const rec = records[level.name];
+      const prevBest = rec ? rec.best : null;
+      const improved = prevBest != null && n < prevBest;
+      if (!rec || rec.best == null || n < rec.best) records[level.name] = { best: n };
+      saveRecords();
+      ui.name.textContent = level.name + ' ' + mark(levelIndex);
+      updateBest();
       setTimeout(() => {
-        ui.clearMoves.textContent = `${history.length} 手でクリア`;
+        ui.clearMoves.textContent = `${n} 手でクリア（最短 ${p} 手）`;
+        ui.clearNote.textContent = n === p ? '★ 最短手数でクリア！' : improved ? 'ベスト更新！' : '';
+        ui.clearNote.hidden = !ui.clearNote.textContent;
         ui.clear.hidden = false;
       }, 350);
     }
@@ -186,6 +251,8 @@
   };
   window.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!ui.select.hidden) { if (e.code === 'Escape') closeSelect(); return; }
+    if (e.code === 'Escape' || e.code === 'KeyM') { openSelect(); return; }
     if (won && (e.code === 'Enter' || e.code === 'Space')) { loadLevel(levelIndex + 1); e.preventDefault(); return; }
     if (e.code === 'KeyZ' || e.code === 'Backspace') { undo(); e.preventDefault(); return; }
     if (e.code === 'KeyR') { loadLevel(levelIndex); return; }
@@ -204,6 +271,9 @@
   $('btn-cw').onclick = () => enqueue('+');
   $('btn-undo').onclick = undo;
   $('btn-reset').onclick = () => loadLevel(levelIndex);
+  $('btn-menu').onclick = openSelect;
+  $('btn-select-close').onclick = closeSelect;
+  ui.select.addEventListener('click', (e) => { if (e.target === ui.select) closeSelect(); });
   $('btn-prev').onclick = () => loadLevel(levelIndex - 1);
   $('btn-next').onclick = () => loadLevel(levelIndex + 1);
   $('btn-clear-next').onclick = () => loadLevel(levelIndex + 1);
@@ -611,7 +681,11 @@
 
   // ---------- 開始 ----------
   let start = 0;
-  try { start = Math.min(LEVELS.length - 1, Math.max(0, +localStorage.getItem('kagewatari.last') || 0)); } catch { /* noop */ }
+  try {
+    const lastName = localStorage.getItem('kagewatari.lastName');
+    const byName = LEVELS.findIndex((d) => d.name === lastName);
+    start = byName >= 0 ? byName : Math.min(LEVELS.length - 1, Math.max(0, +localStorage.getItem('kagewatari.last') || 0));
+  } catch { /* noop */ }
   loadLevel(start);
   requestAnimationFrame(frame);
 })();
