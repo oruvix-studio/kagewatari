@@ -193,10 +193,8 @@
 
   function updateSettings() {
     document.querySelectorAll('.btn-sfx').forEach((b) => { b.textContent = `${Sound.sfxOn ? '🔊' : '🔇'} ${T('sfx')} ${T(Sound.sfxOn ? 'on' : 'off')}`; b.classList.toggle('off', !Sound.sfxOn); });
-    document.querySelectorAll('.btn-bgm').forEach((b) => { b.textContent = `🎵 ${T('bgm')} ${T(Sound.bgmOn ? 'on' : 'off')}`; b.classList.toggle('off', !Sound.bgmOn); });
   }
   document.querySelectorAll('.btn-sfx').forEach((b) => (b.onclick = () => { Sound.setSfx(!Sound.sfxOn); Sound.play('click'); updateSettings(); }));
-  document.querySelectorAll('.btn-bgm').forEach((b) => (b.onclick = () => { Sound.unlock(); Sound.setBgm(!Sound.bgmOn); updateSettings(); }));
   document.querySelectorAll('.btn-lang').forEach((b) => (b.onclick = () => { Sound.play('click'); I18N.toggle(); }));
   I18N.onChange(() => {
     updateLevelText();
