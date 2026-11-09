@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>影渡り</title>
+<style>
+  :root {
+    --ink: #3b2f4a;
+    --panel: rgba(255, 248, 236, 0.82);
+    --accent: #6b5ca5;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #efd6b2; color: var(--ink);
+    font-family: "Hiragino Maru Gothic ProN", "Hiragino Sans", system-ui, sans-serif; }
+  canvas { display: block; touch-action: none; }
+  .bar { position: fixed; left: 0; right: 0; display: flex; align-items: center; justify-content: center;
+    gap: 8px; padding: 10px 16px; pointer-events: none; }
+  .bar > * { pointer-events: auto; }
+  #top { top: env(safe-area-inset-top); flex-direction: column; gap: 6px; }
+  #top .row { display: flex; align-items: center; gap: 10px; background: var(--panel);
+    padding: 6px 10px; border-radius: 999px; box-shadow: 0 2px 10px rgba(80, 50, 30, 0.12); }
+  #level-num { font-size: 13px; opacity: 0.65; font-variant-numeric: tabular-nums; }
+  #level-name { font-weight: 700; font-size: 16px; min-width: 7em; text-align: center; }
+  #moves { font-size: 13px; opacity: 0.75; font-variant-numeric: tabular-nums; min-width: 3.5em; text-align: right; }
+  #hint { font-size: 13px; background: var(--panel); padding: 5px 12px; border-radius: 10px; max-width: 520px; text-align: center; }
+  #bottom { bottom: env(safe-area-inset-bottom); padding-bottom: 18px; }
+  button { font: inherit; color: var(--ink); background: var(--panel); border: none; border-radius: 14px;
+    padding: 10px 14px; min-width: 52px; min-height: 48px; cursor: pointer;
+    box-shadow: 0 2px 8px rgba(80, 50, 30, 0.15); display: flex; flex-direction: column; align-items: center; gap: 1px; }
+  button:active { transform: translateY(1px); background: #fff; }
+  button:disabled { opacity: 0.35; cursor: default; transform: none; }
+  button .ico { font-size: 20px; line-height: 1; }
+  button .lbl { font-size: 10px; opacity: 0.7; }
+  button .key { font-size: 9px; opacity: 0.45; }
+  #top button { min-height: 32px; min-width: 32px; padding: 4px 8px; box-shadow: none; background: transparent; }
+  .sun button .ico { color: #d98a1c; }
+  .spacer { width: 12px; }
+  #toast { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%) scale(0.9); opacity: 0;
+    background: rgba(60, 30, 40, 0.85); color: #fff; padding: 10px 18px; border-radius: 12px; font-size: 15px;
+    transition: opacity 0.2s, transform 0.2s; pointer-events: none; white-space: nowrap; }
+  #toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  #clear { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(50, 40, 80, 0.35); }
+  #clear[hidden] { display: none; }
+  #clear .card { background: #fffaf0; padding: 24px 32px; border-radius: 20px; text-align: center;
+    box-shadow: 0 10px 40px rgba(40, 20, 60, 0.3); }
+  #clear h2 { margin: 0 0 6px; font-size: 26px; color: var(--accent); }
+  #clear p { margin: 0 0 16px; opacity: 0.75; }
+  #clear button { margin: 0 auto; background: var(--accent); color: #fff; padding: 10px 28px; font-weight: 700; }
+  #help { position: fixed; right: 12px; bottom: 12px; font-size: 10px; opacity: 0.45; text-align: right; line-height: 1.5; }
+  @media (max-width: 600px), (pointer: coarse) { #help, button .key { display: none; } }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="top" class="bar">
+  <div class="row">
+    <button id="btn-prev" aria-label="前のステージ">◀</button>
+    <span id="level-num"></span>
+    <span id="level-name"></span>
+    <span id="moves"></span>
+    <button id="btn-next" aria-label="次のステージ">▶</button>
+  </div>
+  <div id="hint"></div>
+</div>
+
+<div id="bottom" class="bar">
+  <span class="sun"><button id="btn-ccw"><span class="ico">☀⟲</span><span class="lbl">太陽</span><span class="key">Q</span></button></span>
+  <span class="sun"><button id="btn-cw"><span class="ico">⟳☀</span><span class="lbl">太陽</span><span class="key">E</span></button></span>
+  <span class="spacer"></span>
+  <button id="btn-undo"><span class="ico">↶</span><span class="lbl">戻す</span><span class="key">Z</span></button>
+  <button id="btn-reset"><span class="ico">↺</span><span class="lbl">最初から</span><span class="key">R</span></button>
+</div>
+
+<div id="toast"></div>
+
+<div id="clear" hidden>
+  <div class="card">
+    <h2>月のかけらを手に入れた</h2>
+    <p id="clear-moves"></p>
+    <button id="btn-clear-next">次へ</button>
+  </div>
+</div>
+
+<div id="help">タップ / クリック：そこまで歩く<br>矢印・WASD：移動　Q / E：太陽を回す<br>Z：戻す　R：最初から　[ ]：ステージ切替</div>
+
+<script src="src/logic.js"></script>
+<script src="src/levels.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>
