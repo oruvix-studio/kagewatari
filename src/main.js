@@ -3,6 +3,8 @@
   'use strict';
   const L = window.ShadowLogic;
   const LEVELS = window.SHADOW_LEVELS;
+  const I18N = window.I18N, T = I18N.t;
+  const Sound = window.Sound;
 
   // ---------- 定数 ----------
   // 高さ1単位 = 床1マスの辺の長さ（立方体）。太陽の高度は45°なので、影の長さ = 柱の高さ。
@@ -27,6 +29,7 @@
     num: $('level-num'), name: $('level-name'), moves: $('moves'), hint: $('hint'),
     toast: $('toast'), clear: $('clear'), clearMoves: $('clear-moves'), clearNote: $('clear-note'),
     best: $('best'), select: $('select'), selectGrid: $('select-grid'), selectSum: $('select-sum'),
+    title: $('title'), continueAt: $('continue-at'), continueLabel: $('continue-label'),
   };
 
   // ---------- 状態 ----------
@@ -89,10 +92,7 @@
     sunAngle = sunAngleTarget = state.sun * 90;
     sunTween = null;
     ui.num.textContent = `${levelIndex + 1} / ${LEVELS.length}`;
-    ui.name.textContent = level.name + (mark(levelIndex) ? ' ' + mark(levelIndex) : '');
-    updateBest();
-    ui.hint.textContent = level.hint;
-    ui.hint.hidden = !level.hint;
+    updateLevelText();
     ui.clear.hidden = true;
     $('btn-ccw').disabled = $('btn-cw').disabled = level.lockSun;
     updateMoves();
@@ -100,11 +100,20 @@
     try { localStorage.setItem('kagewatari.lastName', level.name); } catch { /* noop */ }
   }
 
-  function updateMoves() { ui.moves.textContent = `${history.length} 手`; }
+  function updateMoves() { ui.moves.textContent = T('moves', history.length); }
   function updateBest() {
     const r = recordOf(levelIndex);
-    const best = r && r.best != null ? `ベスト ${r.best} 手` : 'ベスト —';
-    ui.best.textContent = `${best} ／ 最短 ${par(levelIndex)} 手`;
+    ui.best.textContent = T('best', r && r.best != null ? r.best : null, par(levelIndex));
+  }
+  // 言語に依存する表示をまとめて更新
+  function updateLevelText() {
+    const def = LEVELS[levelIndex], m = mark(levelIndex);
+    ui.name.textContent = I18N.levelName(def) + (m ? ' ' + m : '');
+    const hint = I18N.levelHint(def);
+    ui.hint.textContent = hint;
+    ui.hint.hidden = !hint;
+    updateBest();
+    updateMoves();
   }
 
   // ---------- ステージ選択 ----------
@@ -115,18 +124,93 @@
       const r = recordOf(i), m = mark(i);
       if (r) cleared++;
       if (m === '★') stars++;
-      const b = document.createElement('button');
+      const b = document.createElement('div');
+      b.setAttribute('role', 'button');
+      b.tabIndex = 0;
+      b.onkeydown = (e) => { if (e.key === 'Enter') b.onclick(); };
       b.className = 'stage' + (i === levelIndex ? ' current' : '') + (r ? ' done' : '');
-      b.innerHTML = `<span class="no"></span><span class="nm"></span><span class="bt"></span>`;
+      b.innerHTML = `<canvas class="thumb" width="232" height="120"></canvas><span class="no"></span><span class="nm"></span><span class="bt"></span>`;
+      drawThumb(b.querySelector('canvas'), def);
       b.querySelector('.no').textContent = `${i + 1}${m ? ' ' + m : ''}`;
-      b.querySelector('.nm').textContent = def.name;
-      b.querySelector('.bt').textContent = r && r.best != null ? `${r.best} / ${par(i)} 手` : r ? 'クリア' : '';
-      b.onclick = () => { closeSelect(); loadLevel(i); };
+      b.querySelector('.nm').textContent = I18N.levelName(def);
+      b.querySelector('.bt').textContent = r && r.best != null ? T('cardBest', r.best, par(i)) : r ? T('cardCleared') : '';
+      b.onclick = () => { Sound.play('click'); closeSelect(); closeTitle(); loadLevel(i); };
       ui.selectGrid.appendChild(b);
     });
-    ui.selectSum.textContent = `クリア ${cleared} / ${LEVELS.length}　★ ${stars}`;
+    ui.selectSum.textContent = T('selectSum', cleared, LEVELS.length, stars);
     ui.select.hidden = false;
+    const cur = ui.selectGrid.children[levelIndex];
+    if (cur) cur.scrollIntoView({ block: 'nearest' });
   }
+
+  // ステージのサムネイル（初期状態の盤面を小さく描く）
+  function drawThumb(cv, def) {
+    const { level: lv, state: st } = L.parse(def);
+    const c = cv.getContext('2d');
+    const W = cv.width, H = cv.height;
+    const maxH = Math.max(1, ...lv.cells.map((q) => (q.t === 'pillar' ? q.h : 0)));
+    const P0 = (x, y, z) => [(x - y) * 0.5, (x + y) * 0.25 - z * 0.5];
+    const minX = -lv.h * 0.5, maxX = lv.w * 0.5, minY = -maxH * 0.5, maxY = (lv.w + lv.h) * 0.25 + 0.1;
+    const sc = Math.min((W - 12) / (maxX - minX), (H - 12) / (maxY - minY));
+    const ox = (W - (maxX - minX) * sc) / 2 - minX * sc, oy = (H - (maxY - minY) * sc) / 2 - minY * sc;
+    const P = (x, y, z) => { const [a, b] = P0(x, y, z); return [ox + a * sc, oy + b * sc]; };
+    const fill = (pts, col) => { c.beginPath(); pts.forEach(([a, b], k) => (k ? c.lineTo(a, b) : c.moveTo(a, b))); c.closePath(); c.fillStyle = col; c.fill(); };
+    const cube = (x0, y0, x1, y1, z, top, left, right) => {
+      fill([P(x0, y1, z), P(x1, y1, z), P(x1, y1, 0), P(x0, y1, 0)], left);
+      fill([P(x1, y0, z), P(x1, y1, z), P(x1, y1, 0), P(x1, y0, 0)], right);
+      fill([P(x0, y0, z), P(x1, y0, z), P(x1, y1, z), P(x0, y1, z)], top);
+    };
+    const sh = L.shadowMap(lv, st.sun, st.crates);
+    const shade = rgb(mix(COLORS.floorTop, COLORS.shadeTint, SHADOW_ALPHA));
+    for (let d = 0; d < lv.w + lv.h; d++) for (let x = 0; x < lv.w; x++) {
+      const y = d - x;
+      if (y < 0 || y >= lv.h) continue;
+      const q = lv.cells[y * lv.w + x];
+      if (q.t === 'void') continue;
+      const col = q.t === 'goal' ? rgb(COLORS.goalTop) : q.t === 'safe' || sh[y * lv.w + x] ? shade : rgb(COLORS.floorTop);
+      fill([P(x, y, 0), P(x + 1, y, 0), P(x + 1, y + 1, 0), P(x, y + 1, 0)], col);
+    }
+    for (let d = 0; d < lv.w + lv.h; d++) for (let x = 0; x < lv.w; x++) {
+      const y = d - x;
+      if (y < 0 || y >= lv.h) continue;
+      const q = lv.cells[y * lv.w + x], i = y * lv.w + x;
+      if (q.t === 'pillar') cube(x + 0.1, y + 0.1, x + 0.9, y + 0.9, q.h, rgb(COLORS.pillarTop), rgb(COLORS.pillarL), rgb(COLORS.pillarR));
+      if (st.crates.includes(i)) cube(x + 0.15, y + 0.15, x + 0.85, y + 0.85, 0.85, rgb(COLORS.crateTop), rgb(COLORS.crateL), rgb(COLORS.crateR));
+      if (q.t === 'safe') { const [a, b] = P(x + 0.5, y + 0.5, 1.1); c.fillStyle = '#e8604c'; c.beginPath(); c.ellipse(a, b, sc * 0.33, sc * 0.17, 0, 0, Math.PI * 2); c.fill(); }
+      if (q.t === 'goal') { const [a, b] = P(x + 0.5, y + 0.5, 0.6); c.fillStyle = '#b9b0ff'; c.beginPath(); c.arc(a, b, sc * 0.16, 0, Math.PI * 2); c.fill(); }
+      if (x === st.x && y === st.y) { const [a, b] = P(x + 0.5, y + 0.5, 0.45); c.fillStyle = '#2c2747'; c.beginPath(); c.arc(a, b, sc * 0.17, 0, Math.PI * 2); c.fill(); }
+    }
+  }
+
+  // ---------- タイトル画面・設定 ----------
+  function openTitle() {
+    const anyRecord = LEVELS.some((d, i) => recordOf(i));
+    ui.continueLabel.textContent = anyRecord ? T('continue') : T('start');
+    ui.continueAt.textContent = T('continueAt', levelIndex + 1, I18N.levelName(LEVELS[levelIndex]));
+    ui.title.hidden = false;
+  }
+  function closeTitle() { ui.title.hidden = true; }
+
+  function updateSettings() {
+    document.querySelectorAll('.btn-sfx').forEach((b) => { b.textContent = `${Sound.sfxOn ? '🔊' : '🔇'} ${T('sfx')} ${T(Sound.sfxOn ? 'on' : 'off')}`; b.classList.toggle('off', !Sound.sfxOn); });
+    document.querySelectorAll('.btn-bgm').forEach((b) => { b.textContent = `🎵 ${T('bgm')} ${T(Sound.bgmOn ? 'on' : 'off')}`; b.classList.toggle('off', !Sound.bgmOn); });
+  }
+  document.querySelectorAll('.btn-sfx').forEach((b) => (b.onclick = () => { Sound.setSfx(!Sound.sfxOn); Sound.play('click'); updateSettings(); }));
+  document.querySelectorAll('.btn-bgm').forEach((b) => (b.onclick = () => { Sound.unlock(); Sound.setBgm(!Sound.bgmOn); updateSettings(); }));
+  document.querySelectorAll('.btn-lang').forEach((b) => (b.onclick = () => { Sound.play('click'); I18N.toggle(); }));
+  I18N.onChange(() => {
+    updateLevelText();
+    updateSettings();
+    if (!ui.select.hidden) openSelect();
+    if (!ui.title.hidden) openTitle();
+  });
+  $('btn-continue').onclick = () => { Sound.play('click'); closeTitle(); };
+  $('btn-title-stages').onclick = () => { Sound.play('click'); openSelect(); };
+  $('btn-to-title').onclick = () => { Sound.play('click'); closeSelect(); openTitle(); };
+
+  // ブラウザは操作があるまで音を出せないので、最初の操作で音を有効にする
+  window.addEventListener('pointerdown', () => Sound.unlock(), true);
+  window.addEventListener('keydown', () => Sound.unlock(), true);
   function closeSelect() { ui.select.hidden = true; }
 
   // ---------- 操作 ----------
@@ -138,15 +222,19 @@
       if (r.reason === 'burn') {
         shake = 0.3;
         if (r.target) flash = { x: r.target[0], y: r.target[1], t: 0.45 };
-        toast(action === '+' || action === '-' ? 'その向きだと日なたになってしまう！' : '日なたには出られない！');
+        toast(action === '+' || action === '-' ? T('burnRotate') : T('burnMove'));
+        Sound.play('burn');
       } else if (r.reason === 'locked') {
-        toast('このステージでは太陽は動かない');
+        toast(T('locked'));
+        Sound.play('locked');
       }
       return false;
     }
     history.push(state);
     const prev = state;
     state = r.state;
+    if (action === '+' || action === '-') Sound.play('sun', action === '+' ? 1 : -1);
+    else Sound.play(r.pushed ? 'push' : 'step');
     if (action === '+') rotateSunTo(sunAngleTarget + 90);
     if (action === '-') rotateSunTo(sunAngleTarget - 90);
     if (L.MOVES[action]) {
@@ -162,11 +250,11 @@
       const improved = prevBest != null && n < prevBest;
       if (!rec || rec.best == null || n < rec.best) records[level.name] = { best: n };
       saveRecords();
-      ui.name.textContent = level.name + ' ' + mark(levelIndex);
-      updateBest();
+      updateLevelText();
+      setTimeout(() => Sound.play('clear'), 120);
       setTimeout(() => {
-        ui.clearMoves.textContent = `${n} 手でクリア（最短 ${p} 手）`;
-        ui.clearNote.textContent = n === p ? '★ 最短手数でクリア！' : improved ? 'ベスト更新！' : '';
+        ui.clearMoves.textContent = T('clearMoves', n, p);
+        ui.clearNote.textContent = n === p ? T('perfect') : improved ? T('newBest') : '';
         ui.clearNote.hidden = !ui.clearNote.textContent;
         ui.clear.hidden = false;
       }, 350);
@@ -177,6 +265,7 @@
   function undo() {
     if (!history.length) return;
     state = history.pop();
+    Sound.play('undo');
     rotateSunTo(nearestAngle(sunAngleTarget, state.sun * 90));
     anim = null; queue = []; won = false;
     ui.clear.hidden = true;
@@ -241,7 +330,7 @@
     }
     const p = pathTo(gx, gy);
     if (p) queue = p;
-    else { flash = { x: gx, y: gy, t: 0.45 }; toast('影の中を通って行けない'); }
+    else { flash = { x: gx, y: gy, t: 0.45 }; toast(T('noPath')); }
   }
 
   // ---------- 入力 ----------
@@ -252,6 +341,11 @@
   window.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (!ui.select.hidden) { if (e.code === 'Escape') closeSelect(); return; }
+    if (!ui.title.hidden) {
+      if (e.code === 'Enter' || e.code === 'Space') { closeTitle(); e.preventDefault(); }
+      else if (e.code === 'Escape') openSelect();
+      return;
+    }
     if (e.code === 'Escape' || e.code === 'KeyM') { openSelect(); return; }
     if (won && (e.code === 'Enter' || e.code === 'Space')) { loadLevel(levelIndex + 1); e.preventDefault(); return; }
     if (e.code === 'KeyZ' || e.code === 'Backspace') { undo(); e.preventDefault(); return; }
@@ -686,6 +780,9 @@
     const byName = LEVELS.findIndex((d) => d.name === lastName);
     start = byName >= 0 ? byName : Math.min(LEVELS.length - 1, Math.max(0, +localStorage.getItem('kagewatari.last') || 0));
   } catch { /* noop */ }
+  I18N.apply();
   loadLevel(start);
+  updateSettings();
+  openTitle();
   requestAnimationFrame(frame);
 })();

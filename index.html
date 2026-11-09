@@ -60,17 +60,35 @@
     max-height: 100%; display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(40, 20, 60, 0.3); }
   #select h2 { margin: 0; font-size: 20px; color: var(--accent); text-align: center; }
   #select-sum { margin: 4px 0 12px; text-align: center; font-size: 13px; opacity: 0.7; }
-  #select-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); gap: 8px;
-    overflow-y: auto; padding: 2px; }
-  #select .stage { min-height: 78px; height: auto; align-items: flex-start; justify-content: flex-start;
-    text-align: left; padding: 8px 10px; gap: 3px; line-height: 1.3; overflow: visible;
-    background: #f3eadb; box-shadow: none; }
+  #select-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); grid-auto-rows: max-content;
+    gap: 8px; overflow-y: auto; padding: 2px; flex: 1 1 auto; min-height: 0; }
+  #select .stage { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 14px;
+    background: #f3eadb; cursor: pointer; line-height: 1.3; text-align: left; }
+  #select .stage:hover { background: #efe3cf; }
+  #select .stage .thumb { width: 100%; height: auto; aspect-ratio: 232 / 120; margin-bottom: 2px; }
   #select .stage.done { background: #e9e3f6; }
   #select .stage.current { outline: 2px solid var(--accent); }
   #select .stage .no { font-size: 12px; font-weight: 700; color: var(--accent); }
   #select .stage .nm { font-size: 13px; }
   #select .stage .bt { font-size: 11px; opacity: 0.6; font-variant-numeric: tabular-nums; }
-  #btn-select-close { margin: 14px auto 0; min-height: 40px; }
+  .settings { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
+  .settings button { min-height: 38px; padding: 6px 12px; font-size: 13px; flex-direction: row; box-shadow: none; background: #f3eadb; }
+  .settings button.off { opacity: 0.6; }
+  #title { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px;
+    background: radial-gradient(ellipse at 50% 35%, rgba(255, 244, 222, 0.75), rgba(214, 186, 150, 0.92)); }
+  #title[hidden] { display: none; }
+  #title { z-index: 10; } #clear { z-index: 15; } #select { z-index: 20; } #toast { z-index: 30; }
+  .title-card { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 420px; width: 100%; }
+  .title-card h1 { margin: 0; font-size: clamp(40px, 11vw, 64px); letter-spacing: 0.08em; color: #2c2747; }
+  .title-card .tagline { margin: 0 0 18px; opacity: 0.75; }
+  .title-card .moon { width: 56px; height: 56px; border-radius: 50%; box-shadow: 14px -6px 0 0 #f4f0ff;
+    margin: 0 0 6px 0; transform: translateX(-10px); filter: drop-shadow(0 0 12px rgba(170, 160, 255, 0.9)); }
+  .title-card button { width: min(280px, 100%); }
+  .title-card .primary { background: var(--accent); color: #fff; font-weight: 700; font-size: 18px; padding: 12px; gap: 2px; }
+  .title-card .primary .sub { font-size: 12px; font-weight: 400; opacity: 0.85; }
+  .title-card .wide { font-size: 16px; }
+  .title-card .settings button { width: auto; }
+  .title-card .credit { font-size: 11px; opacity: 0.45; margin-top: 18px; }
   #help { position: fixed; right: 12px; bottom: 12px; font-size: 10px; opacity: 0.45; text-align: right; line-height: 1.5; }
   @media (max-width: 600px), (pointer: coarse) { #help, button .key { display: none; } }
 </style>
@@ -80,49 +98,75 @@
 
 <div id="top" class="bar">
   <div class="row">
-    <button id="btn-menu" aria-label="ステージ選択">☰</button>
-    <button id="btn-prev" aria-label="前のステージ">◀</button>
+    <button id="btn-menu" data-i18n-aria="ariaMenu">☰</button>
+    <button id="btn-prev" data-i18n-aria="ariaPrev">◀</button>
     <span id="level-num"></span>
     <span id="level-name"></span>
     <span id="moves"></span>
-    <button id="btn-next" aria-label="次のステージ">▶</button>
+    <button id="btn-next" data-i18n-aria="ariaNext">▶</button>
   </div>
   <div id="best"></div>
   <div id="hint"></div>
 </div>
 
 <div id="bottom" class="bar">
-  <span class="sun"><button id="btn-ccw"><span class="ico">☀⟲</span><span class="lbl">太陽</span><span class="key">Q</span></button></span>
-  <span class="sun"><button id="btn-cw"><span class="ico">⟳☀</span><span class="lbl">太陽</span><span class="key">E</span></button></span>
+  <span class="sun"><button id="btn-ccw"><span class="ico">☀⟲</span><span class="lbl" data-i18n="sun"></span><span class="key">Q</span></button></span>
+  <span class="sun"><button id="btn-cw"><span class="ico">⟳☀</span><span class="lbl" data-i18n="sun"></span><span class="key">E</span></button></span>
   <span class="spacer"></span>
-  <button id="btn-undo"><span class="ico">↶</span><span class="lbl">戻す</span><span class="key">Z</span></button>
-  <button id="btn-reset"><span class="ico">↺</span><span class="lbl">最初から</span><span class="key">R</span></button>
+  <button id="btn-undo"><span class="ico">↶</span><span class="lbl" data-i18n="undo"></span><span class="key">Z</span></button>
+  <button id="btn-reset"><span class="ico">↺</span><span class="lbl" data-i18n="restart"></span><span class="key">R</span></button>
 </div>
 
 <div id="toast"></div>
 
 <div id="clear" hidden>
   <div class="card">
-    <h2>月のかけらを手に入れた</h2>
+    <h2 data-i18n="clearTitle"></h2>
     <p id="clear-moves"></p>
     <p id="clear-note" class="note" hidden></p>
-    <button id="btn-clear-next">次へ</button>
+    <button id="btn-clear-next" data-i18n="next"></button>
   </div>
 </div>
 
 <div id="select" hidden>
   <div class="card">
-    <h2>ステージ選択</h2>
+    <h2 data-i18n="stages"></h2>
     <p id="select-sum"></p>
     <div id="select-grid"></div>
-    <button id="btn-select-close">閉じる</button>
+    <div class="settings">
+      <button class="btn-lang" data-i18n="langSwitch"></button>
+      <button class="btn-sfx"></button>
+      <button class="btn-bgm"></button>
+    </div>
+    <div class="settings">
+      <button id="btn-to-title" data-i18n="toTitle"></button>
+      <button id="btn-select-close" data-i18n="close"></button>
+    </div>
   </div>
 </div>
 
-<div id="help">タップ / クリック：そこまで歩く<br>矢印・WASD：移動　Q / E：太陽を回す<br>Z：戻す　R：最初から　[ ]：ステージ切替　Esc：ステージ選択</div>
+<div id="title" hidden>
+  <div class="title-card">
+    <div class="moon"></div>
+    <h1 data-i18n="title"></h1>
+    <p class="tagline" data-i18n="tagline"></p>
+    <button id="btn-continue" class="primary"><span id="continue-label"></span><span id="continue-at" class="sub"></span></button>
+    <button id="btn-title-stages" class="wide" data-i18n="stages"></button>
+    <div class="settings">
+      <button class="btn-lang" data-i18n="langSwitch"></button>
+      <button class="btn-sfx"></button>
+      <button class="btn-bgm"></button>
+    </div>
+    <p class="credit">© ORUVIX Studio</p>
+  </div>
+</div>
+
+<div id="help" data-i18n-html="help"></div>
 
 <script src="src/logic.js"></script>
 <script src="src/levels.js"></script>
+<script src="src/i18n.js"></script>
+<script src="src/audio.js"></script>
 <script src="src/main.js"></script>
 </body>
 </html>
